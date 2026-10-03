@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>INK POP! - スマホぬりバトル</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;background:#10131d;color:#fff;font-family:system-ui,sans-serif;overflow:hidden;touch-action:none}
+#app{height:100dvh;display:flex;flex-direction:column;align-items:center;padding:8px;gap:6px}
+#top{width:min(96vw,900px);display:flex;justify-content:space-between;align-items:center;font-weight:900}
+#top span{font-size:14px}button{border:0;border-radius:12px;padding:8px 12px;font-weight:900}
+canvas{width:min(96vw,900px);max-height:72dvh;aspect-ratio:16/9;border-radius:15px;box-shadow:0 8px 28px #0008;touch-action:none}
+#help{font-size:12px;opacity:.75;text-align:center}
+#joy{position:fixed;left:18px;bottom:22px;width:112px;height:112px;border-radius:50%;background:#ffffff22;border:2px solid #fff5;display:flex;align-items:center;justify-content:center;touch-action:none}
+#stick{width:48px;height:48px;border-radius:50%;background:#fff9}
+#fire{position:fixed;right:22px;bottom:25px;width:82px;height:82px;border-radius:50%;background:#35e6d0;color:#07383a;font-size:18px;box-shadow:0 5px 15px #0007}
+#special{position:fixed;right:24px;bottom:120px;width:92px;border-radius:15px;padding:9px;background:#ffd84d;color:#322700;font-weight:1000}
+#modal{position:fixed;inset:0;background:#000a;display:none;align-items:center;justify-content:center;text-align:center}
+.card{background:#171b28;border-radius:22px;padding:26px 30px;box-shadow:0 12px 50px #000}
+.card h1{margin:0 0 10px}.card button{font-size:18px;margin-top:10px}
+</style>
+</head>
+<body>
+<div id="app">
+ <div id="top"><span id="score">🩵 0%　🩷 0%</span><span id="timer">60</span><button id="restart">↻</button></div>
+ <canvas id="game" width="960" height="540"></canvas>
+ <div id="help">左下で移動・右下でインクショット　★がたまったらスペシャル！</div>
+</div>
+<div id="joy"><div id="stick"></div></div>
+<button id="fire">インク！</button>
+<button id="special">★ スペシャル</button>
+<div id="modal"><div class="card"><h1 id="result"></h1><p id="detail"></p><button id="again">もう一回！</button></div></div>
+<script>
+const c=document.getElementById("game"),ctx=c.getContext("2d"),W=960,H=540;
+const me={x:170,y:270,r:15,s:3.9,cd:0},bot={x:790,y:270,r:15,s:2.2,cd:0};
+const cells=new Uint8Array(48*27),shots=[];
+let running=true, endAt=Date.now()+60000, special=0, firing=false;
+const joy={dx:0,dy:0,active:false};
+function reset(){cells.fill(0);shots.length=0;me.x=170;me.y=270;bot.x=790;bot.y=270;me.cd=0;bot.cd=0;special=0;running=true;endAt=Date.now()+60000;document.getElementById("modal").style.display="none"}
+document.getElementById("restart").onclick=reset;document.getElementById("again").onclick=reset;
+function paint(x,y,t,r){let gx=Math.floor(x/20),gy=Math.floor(y/20);for(let yy=gy-3;yy<=gy+3;yy++)for(let xx=gx-3;xx<=gx+3;xx++)if(xx>=0&&xx<48&&yy>=0&&yy<27){let cx=xx*20+10,cy=yy*20+10;if((cx-x)**2+(cy-y)**2<(r+13)**2)cells[yy*48+xx]=t}}
+function fire(p,t,a){if(p.cd>0)return;shots.push({x:p.x,y:p.y,vx:Math.cos(a)*9,vy:Math.sin(a)*9,t,life:48});p.cd=10;if(t===1)special=Math.min(100,special+3)}
+function pointerToCanvas(e){let r=c.getBoundingClientRect();return {x:(e.clientX-r.left)*W/r.width,y:(e.clientY-r.top)*H/r.height}}
+function setJoy(e){let r=document.getElementById("joy").getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;let x=e.clientX-cx,y=e.clientY-cy,d=Math.hypot(x,y),m=42;if(d>m){x=x/d*m;y=y/d*m}joy.dx=x/m;joy.dy=y/m;document.getElementById("stick").style.transform=`translate(${x}px,${y}px)`}
+const j=document.getElementById("joy");j.addEventListener("pointerdown",e=>{joy.active=true;j.setPointerCapture(e.pointerId);setJoy(e)});j.addEventListener("pointermove",e=>{if(joy.active)setJoy(e)});j.addEventListener("pointerup",()=>{joy.active=false;joy.dx=joy.dy=0;document.getElementById("stick").style.transform=""});
+document.getElementById("fire").addEventListener("pointerdown",()=>firing=true);document.getElementById("fire").addEventListener("pointerup",()=>firing=false);document.getElementById("fire").addEventListener("pointercancel",()=>firing=false);
+document.getElementById("special").onclick=()=>{if(special<100)return;special=0;for(let k=0;k<28;k++){let a=k*Math.PI*2/28;shots.push({x:me.x,y:me.y,vx:Math.cos(a)*11,vy:Math.sin(a)*11,t:1,life:32})}};
+let lastA=0;
+function loop(){
+if(running){
+ me.x=Math.max(18,Math.min(W-18,me.x+joy.dx*me.s));me.y=Math.max(18,Math.min(H-18,me.y+joy.dy*me.s));me.cd=Math.max(0,me.cd-1);bot.cd=Math.max(0,bot.cd-1);
+ let a=Math.atan2(me.y-bot.y,me.x-bot.x);bot.x=Math.max(18,Math.min(W-18,bot.x+Math.cos(a)*bot.s*.55));bot.y=Math.max(18,Math.min(H-18,bot.y+Math.sin(a)*bot.s*.55));
+ if(firing){let fa=lastA;fire(me,1,fa)} else if(joy.dx||joy.dy) lastA=Math.atan2(joy.dy,joy.dx);
+ if(Math.random()<.12)fire(bot,2,a);
+ paint(me.x,me.y,1,23);paint(bot.x,bot.y,2,23);
+ for(let i=shots.length-1;i>=0;i--){let q=shots[i];q.x+=q.vx;q.y+=q.vy;q.life--;paint(q.x,q.y,q.t,12);if(q.life<=0||q.x<0||q.x>W||q.y<0||q.y>H)shots.splice(i,1)}
+ if(Date.now()>=endAt){running=false;finish()}
+}
+draw();requestAnimationFrame(loop)}
+function finish(){let a=0,b=0;for(const t of cells){if(t===1)a++;if(t===2)b++}document.getElementById("result").textContent=a>b?"🩵 ぬり勝ち！":"🩷 逆転された！";document.getElementById("detail").textContent=`自分 ${Math.round(a/cells.length*100)}%　VS　相手 ${Math.round(b/cells.length*100)}%`;document.getElementById("modal").style.display="flex"}
+function draw(){
+for(let y=0;y<27;y++)for(let x=0;x<48;x++){let t=cells[y*48+x];ctx.fillStyle=t===1?"#35e6d0":t===2?"#ff5a9d":"#e9e9f0";ctx.fillRect(x*20,y*20,20.5,20.5)}
+ctx.strokeStyle="#fff8";ctx.lineWidth=3;ctx.strokeRect(8,8,W-16,H-16);
+for(const p of [me,bot]){ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fillStyle=p===me?"#063f45":"#68183b";ctx.fill();ctx.strokeStyle="#fff";ctx.stroke()}
+let a=0,b=0;for(const t of cells){if(t===1)a++;if(t===2)b++}
+document.getElementById("score").textContent=`🩵 ${Math.round(a/cells.length*100)}%　🩷 ${Math.round(b/cells.length*100)}%`;
+document.getElementById("timer").textContent=running?Math.max(0,Math.ceil((endAt-Date.now())/1000)):"終了";
+document.getElementById("special").textContent=`★ ${special>=100?"発動！":special+"%"}`;
+}
+reset();loop();
+</script>
+</body></html>
